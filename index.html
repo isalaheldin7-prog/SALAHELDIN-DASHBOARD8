@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SALAHELDIN | Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{
+--bg:#09090b;--card:#121214;--border:#27272a;
+--primary:#8b5cf6;--green:#10b981;--red:#ef4444;
+--text:#fafafa;
+}
+body{margin:0;font-family:Inter;background:var(--bg);color:var(--text);padding:15px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:15px;margin-bottom:15px}
+input,select,button{
+width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);
+background:#18181b;color:#fff;margin-bottom:8px
+}
+button{background:var(--primary);border:none;font-weight:bold}
+.win{color:var(--green)} .loss{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{padding:8px;border-bottom:1px solid var(--border)}
+.section{display:none}
+
+/* Menu */
+#menuBtn{position:fixed;top:15px;right:15px;font-size:28px;cursor:pointer;z-index:1001}
+#sideMenu{
+position:fixed;top:0;right:-260px;width:260px;height:100%;
+background:#0f0f12;border-left:1px solid var(--border);
+padding:20px;transition:.3s;z-index:1000
+}
+#sideMenu.open{right:0}
+#sideMenu a{
+display:block;padding:12px;margin-bottom:6px;
+border-radius:8px;background:#18181b;cursor:pointer
+}
+</style>
+</head>
+
+<body>
+
+<div id="menuBtn" onclick="toggleMenu()">☰</div>
+
+<div id="sideMenu">
+<h3>SALAHELDIN</h3>
+<a onclick="openSection('capitalSec')">💰 رأس المال</a>
+<a onclick="openSection('addSec')">➕ إضافة صفقة</a>
+<a onclick="openSection('statsSec')">📊 الإحصائيات</a>
+<a onclick="openSection('chartSec')">📈 الشارت</a>
+<a onclick="openSection('tableSec')">📋 الصفقات</a>
+</div>
+
+<!-- رأس المال -->
+<div class="card section" id="capitalSec">
+<b>Account Size</b>
+<input id="capitalInput" type="number" placeholder="رأس المال $">
+<button onclick="saveCapital()">حفظ</button>
+</div>
+
+<!-- إضافة صفقة -->
+<div class="card section" id="addSec">
+<input id="symbol" placeholder="Symbol">
+<select id="side"><option>Long</option><option>Short</option></select>
+<input id="pnl" type="number" placeholder="P&L">
+<button onclick="saveTrade()">حفظ الصفقة</button>
+</div>
+
+<!-- الإحصائيات -->
+<div class="card section" id="statsSec">
+<b>📊 Statistics</b><br><br>
+Net P&L: <b id="net"></b><br>
+Return %: <b id="ret"></b><br>
+Win Rate: <b id="winrate"></b><br>
+Profit Factor: <b id="pf"></b><br>
+Avg Win: <b id="avgWin"></b><br>
+Avg Loss: <b id="avgLoss"></b><br>
+Max Drawdown: <b id="dd"></b>
+</div>
+
+<!-- الشارت -->
+<div class="card section" id="chartSec">
+<canvas id="chart"></canvas>
+</div>
+
+<!-- الصفقات -->
+<div class="card section" id="tableSec">
+<table>
+<thead>
+<tr><th>Symbol</th><th>P&L</th><th>🗑</th></tr>
+</thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+
+<script>
+let trades=JSON.parse(localStorage.getItem('trades'))||[];
+let capital=+localStorage.getItem('capital')||0;
+let chart;
+
+capitalInput.value=capital||'';
+
+function toggleMenu(){sideMenu.classList.toggle('open')}
+function openSection(id){
+document.querySelectorAll('.section').forEach(s=>s.style.display='none');
+document.getElementById(id).style.display='block';
+toggleMenu();
+}
+openSection('statsSec');
+
+function saveCapital(){
+capital=+capitalInput.value;
+localStorage.setItem('capital',capital);
+render();
+}
+
+function saveTrade(){
+if(!symbol.value||!pnl.value)return alert('أدخل البيانات');
+trades.push({symbol:symbol.value,pnl:+pnl.value});
+localStorage.setItem('trades',JSON.stringify(trades));
+symbol.value=pnl.value='';
+render();
+}
+
+function render(){
+rows.innerHTML='';
+let sum=0,wins=0,losses=0,gw=0,gl=0;
+let eq=[0],peak=0,dd=0;
+
+trades.forEach((t,i)=>{
+sum+=t.pnl; eq.push(sum);
+peak=Math.max(peak,sum);
+dd=Math.min(dd,sum-peak);
+if(t.pnl>0){wins++;gw+=t.pnl}else{losses++;gl+=Math.abs(t.pnl)}
+rows.innerHTML+=`
+<tr>
+<td>${t.symbol}</td>
+<td class="${t.pnl>=0?'win':'loss'}">${t.pnl}</td>
+<td onclick="del(${i})">🗑</td>
+</tr>`;
+});
+
+net.innerText=sum;
+ret.innerText=capital?((sum/capital)*100).toFixed(2)+'%':'-';
+winrate.innerText=trades.length?((wins/trades.length)*100).toFixed(1)+'%':'-';
+pf.innerText=gl? (gw/gl).toFixed(2):gw.toFixed(2);
+avgWin.innerText=wins?(gw/wins).toFixed(2):'-';
+avgLoss.innerText=losses?(gl/losses).toFixed(2):'-';
+dd.innerText=capital?((dd/capital)*100).toFixed(2)+'%':'-';
+
+draw(eq);
+}
+
+function draw(d){
+if(chart)chart.destroy();
+chart=new Chart(document.getElementById('chart'),{
+type:'line',
+data:{labels:d.map((_,i)=>i),datasets:[{data:d,borderColor:'#8b5cf6',fill:true}]},
+options:{plugins:{legend:{display:false}}}
+});
+}
+
+function del(i){
+trades.splice(i,1);
+localStorage.setItem('trades',JSON.stringify(trades));
+render();
+}
+render();
+</script>
+
+</body>
+</html>
